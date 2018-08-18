@@ -63,7 +63,12 @@ public class ServerRenderingFilterTest {
     @Test
     public void noCache() {
         withClient(target -> assertEquals(HttpServletResponse.SC_OK, target.path("/foo.html").request().get().getStatus()));
-        retry(8).accept(() -> assertFalse(cache.invalidate(base() + "/foo.html")));
+        try {
+            sleep(8000);
+        } catch (final InterruptedException e) {
+            fail();
+        }
+        assertFalse(cache.invalidate(base() + "/foo.html"));
     }
 
     private Consumer<Runnable> retry(final int count) {
