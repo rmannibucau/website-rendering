@@ -39,6 +39,12 @@
       <artifactId>microprofile-config-api</artifactId>
       <version>1.2.1</version>
       <scope>provided</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.osgi</groupId>
+          <artifactId>org.osgi.annotation.versioning</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.geronimo.specs</groupId>
@@ -51,6 +57,12 @@
       <groupId>org.apache.tomee</groupId>
       <artifactId>ziplock</artifactId>
       <version>7.0.4</version>
+      <exclusions>
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>com.codeborne</groupId>
