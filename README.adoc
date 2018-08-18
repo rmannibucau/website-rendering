@@ -1,0 +1,112 @@
+= Website Rendering
+
+The goal of this project is to provide a JavaEE/Microprofile friendly
+solution to implement a Server Side Rendering like solution.
+
+The overall idea is to use PhantomJS to render the page and then serve it
+from the server when requested. This is why it is more accurate to speak of
+rather be called "Server Side Client Rendering".
+
+== Configuration
+
+The configuration uses Microprofile Config so you can use environment variables,
+system properties or custom `ConfigSource` at least.
+
+== Ensure PhantomJS is available
+
+There are two ways to provide PhantomJS to the library:
+
+1. Install it in folder `F` and set the `rmannibucau.website.rendering.phantomjs.location`
+to the folder containing the `bin/` folder of PhantomJS.
+2. Add to your classpath the right arquillian dependency to let the library
+extract it in the `rmannibucau.website.rendering.phantomjs.location` folder.
+
+Here is, for example, the dependency to add for linux if you want to use option 2:
+
+[source,xml]
+----
+<dependency>
+  <groupId>org.jboss.arquillian.extension</groupId>
+  <artifactId>arquillian-phantom-binary</artifactId>
+  <version>2.1.1</version>
+  <classifier>linux-64</classifier>
+</dependency>
+----
+
+== Activate Client Rendering Serving
+
+This is the mode where you will serve the rendered HTML by PhantomJS.
+First step is to configure the url patterns corresponding to that feature through the
+configuration `rmannibucau.website.rendering.web.urlPatterns`.
+
+For instance to activate it for `/post/*` and `/category/*` use:
+
+[source,config]
+----
+`rmannibucau.website.rendering.web.urlPatterns = /post/*,/category/*`
+----
+
+This will activate a filter for these url patterns which will serve the content through the normal servlet chain
+but once done it will send a task through a thread pool to render the page through PhantomJS.
+Once available the PhantomJS rendering will replace the servlet chain rendering.
+
+IMPORTANT: this is only activate for `GET` requests.
+
+If you want to customize the thread pool size (default being `64`), you can set the configuration `rmannibucau.website.rendering.web.thread.pool.size` to the number
+you want. Just keep in mind that one thread is used internally to avoid hanging rendering requests. To control the timeout for the HTML capture
+you can set `rmannibucau.website.rendering.web.thread.pool.timeout` to a value in milliseconds.
+
+== HTML content storage
+
+By default the captured pages are stored in JCache. If you don't have any implementation you can use this one:
+
+[source,xml]
+----
+<dependency>
+  <groupId>org.apache.geronimo</groupId>
+  <artifactId>geronimo-jcache-simple</artifactId>
+  <version>1.0.0</version>
+</dependency>
+----
+
+The configuration has several options:
+
+1. You produce the JCache configuration. For that you have to use the CDI qualifier `@WebRendering` and produce
+a `CacheManager` and optionally a `Configuration<String, String>`.
+2. You use the configuration entries to customize it without any code.
+
+Here are the available configuration when 1. is not used:
+
+|===
+| Name | Description | Default
+| rmannibucau.website.rendering.cache.name | The JCache name used to store the pages | rmannibucau.website.rendering.cache
+| rmannibucau.website.rendering.cache.jmx | Should JCache JMX integration be activated, ignored if the `Configuration<String, String>` is provided by a producer  | true
+| rmannibucau.website.rendering.cache.statistics | Should JCache statistics be available, ignored if the `Configuration<String, String>` is provided by a producer | false
+| rmannibucau.website.rendering.cache.configuration.uri | JCache configuration location, ignored if the `CacheManager` is provided by a producer | -
+| rmannibucau.website.rendering.cache.configuration.properties | JCache configuration location (as `Properties`), ignored if the `CacheManager` is provided by a producer | -
+|===
+
+Even if JCache already provides a way to integrate with a backend to persist into a database (or NoSQL storage)
+the pages through its `CacheLoader` and `CacheWriter`, you can implement a completely custom storage through the
+`HtmlCache` API. You just need to ensure to activate your implementation through an `@Alternative` or an equivalent technic.
+
+== Set the absolute URL to use to retrieve HTML content
+
+By default the incoming request will be translated to its absolute path. For instance `/foo` will
+be translated to `http://localhost:8080/foo`. This is rarely what you want and this is why you can
+implement a custom `RequestUrlMapper` (and activate it through an `@Alternative` or an equivalent technic):
+
+[source,java]
+----
+@ApplicationScoped
+public class SelfUrlMapper implements RequestUrlMapper {
+    @Override
+    public String toAbsoluteUrl(final HttpServletRequest request) {
+        return "https://mypublic.domain.com" + request.getRequestURI();
+    }
+}
+----
+
+However if you just want to rewrite the base of the request you can just set the configuration `rmannibucau.website.rendering.url.mapper.base`
+to the base you want to prepend to the webapp request path. Typically, previous implementation would be replaced by
+`rmannibucau.website.rendering.url.mapper.base=https://mypublic.domain.com`.
