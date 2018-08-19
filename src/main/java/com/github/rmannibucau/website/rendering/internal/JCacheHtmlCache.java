@@ -17,6 +17,7 @@ import javax.cache.configuration.MutableConfiguration;
 import javax.cache.spi.CachingProvider;
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.inject.Instance;
+import javax.enterprise.inject.Typed;
 import javax.inject.Inject;
 
 import com.github.rmannibucau.website.rendering.spi.HtmlCache;
@@ -25,6 +26,7 @@ import com.github.rmannibucau.website.rendering.spi.WebRendering;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @ApplicationScoped
+@Typed(JCacheHtmlCache.class)
 public class JCacheHtmlCache implements HtmlCache {
     @Inject
     @WebRendering

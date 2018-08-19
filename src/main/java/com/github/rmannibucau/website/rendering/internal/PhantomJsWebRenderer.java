@@ -1,6 +1,7 @@
 package com.github.rmannibucau.website.rendering.internal;
 
 import static java.util.logging.Level.SEVERE;
+import static java.util.stream.Collectors.toList;
 import static org.apache.ziplock.JarLocation.jarFromRegex;
 
 import java.io.BufferedInputStream;
@@ -10,16 +11,22 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.Semaphore;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.logging.Logger;
+import java.util.stream.IntStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Instance;
 import javax.inject.Inject;
 
 import com.github.rmannibucau.website.rendering.api.WebRenderer;
@@ -37,11 +44,15 @@ public class PhantomJsWebRenderer implements WebRenderer {
     @ConfigProperty(name = "rmannibucau.website.rendering.phantomjs.location")
     private Optional<String> phantomJsLocation;
 
-    @Inject // potentially produced by the app, otherwise we just use chrome
-    private Instance<DesiredCapabilities> desiredCapabilities;
+    @Inject
+    @ConfigProperty(name = "rmannibucau.website.rendering.phantomjs.instances.count", defaultValue = "1")
+    private Integer phantomJsInstanceCount;
 
-    private PhantomJSDriverService service;
-    private PhantomJSDriver driver;
+    @Inject // potentially produced by the app, otherwise we just use chrome
+    private javax.enterprise.inject.Instance<DesiredCapabilities> desiredCapabilities;
+
+    private final Collection<Instance> instances = new ArrayList<>();
+    private final Semaphore permits = new Semaphore(0);
 
     @PostConstruct
     private void init() {
@@ -63,37 +74,55 @@ public class PhantomJsWebRenderer implements WebRenderer {
         final DesiredCapabilities capabilities = desiredCapabilities.isResolvable() ?
                 this.desiredCapabilities.get() : DesiredCapabilities.chrome();
         capabilities.setCapability(PhantomJSDriverService.PHANTOMJS_EXECUTABLE_PATH_PROPERTY, exec.getAbsolutePath());
-        service = new PhantomJSDriverService.Builder().usingPhantomJSExecutable(exec).usingAnyFreePort().build();
-        driver = new PhantomJSDriver(service, capabilities);
-        try {
-            service.start();
-        } catch (final IOException e) {
-            throw new IllegalStateException(e);
-        }
+        instances.addAll(IntStream.range(0, phantomJsInstanceCount)
+                .mapToObj(i -> new Instance(capabilities, exec))
+                .collect(toList()));
+        permits.release(instances.size());
     }
 
     // for advanced cases, directly expose the driver
-    public <T> T getDriverAs(final Class<T> expectedApi) {
-        return expectedApi.cast(driver);
+    @Override
+    public <T> void withDriver(final Class<T> expectedApi, final Consumer<T> consumer) {
+        withInstance(driver -> {
+            final T api = expectedApi.cast(driver);
+            consumer.accept(api);
+            return null;
+        });
     }
 
+    @Override
     public String capture(final String url) {
-        driver.get(url);
-        return driver.getPageSource();
+        return withInstance(driver -> {
+            driver.get(url);
+            return driver.getPageSource();
+        });
+    }
+
+    private <T> T withInstance(final Function<PhantomJSDriver, T> fn) {
+        try {
+            permits.acquire();
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        final Instance instance;
+        synchronized (instances) {
+            final Iterator<Instance> iterator = instances.iterator();
+            instance = iterator.next();
+            iterator.remove();
+        }
+        try {
+            return fn.apply(instance.driver);
+        } finally {
+            synchronized (instances) {
+                instances.add(instance);
+            }
+            permits.release();
+        }
     }
 
     @PreDestroy
     private void destroy() {
-        try {
-            driver.close();
-        } catch (final RuntimeException re) {
-            LOGGER.log(SEVERE, re.getMessage(), re);
-        }
-        try {
-            service.stop();
-        } catch (final RuntimeException re) {
-            LOGGER.log(SEVERE, re.getMessage(), re);
-        }
+        instances.forEach(Instance::close);
     }
 
     private String findLocation() {
@@ -167,6 +196,37 @@ public class PhantomJsWebRenderer implements WebRenderer {
                 throw new IllegalStateException("Cannot mkdir: " + file.getAbsolutePath());
             }
             return file;
+        }
+    }
+
+    private static final class Instance implements AutoCloseable {
+        private final PhantomJSDriverService service;
+        private final PhantomJSDriver driver;
+
+        public Instance(final DesiredCapabilities capabilities, final File exec) {
+            service = new PhantomJSDriverService.Builder().usingPhantomJSExecutable(exec).usingAnyFreePort().build();
+            driver = new PhantomJSDriver(service, capabilities);
+            try {
+                service.start();
+            } catch (final IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        @Override
+        public void close() {
+            try {
+                driver.close();
+            } catch (final RuntimeException re) {
+                LOGGER.log(SEVERE, re.getMessage(), re);
+            }
+            if (service.isRunning()) {
+                try {
+                    service.stop();
+                } catch (final RuntimeException re) {
+                    LOGGER.log(SEVERE, re.getMessage(), re);
+                }
+            }
         }
     }
 }

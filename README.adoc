@@ -56,6 +56,12 @@ If you want to customize the thread pool size (default being `64`), you can set 
 you want. Just keep in mind that one thread is used internally to avoid hanging rendering requests. To control the timeout for the HTML capture
 you can set `rmannibucau.website.rendering.web.thread.pool.timeout` to a value in milliseconds.
 
+=== Renderer instances
+
+Since PhantomJS is not thread safe by default and to have a correct compromise regarding memory/process management,
+a single instance is created and rendering is serialized by default. You can request more PhantomJS instances
+by setting `rmannibucau.website.rendering.phantomjs.instances.count` to an integer higher than 1.
+
 == HTML content storage
 
 By default the captured pages are stored in JCache. If you don't have any implementation you can use this one:
@@ -86,6 +92,10 @@ Here are the available configuration when 1. is not used:
 | rmannibucau.website.rendering.cache.configuration.properties | JCache configuration location (as `Properties`), ignored if the `CacheManager` is provided by a producer | -
 |===
 
+If you want a "local file system" implementation is provided as well, to switch to it you need to set
+`rmannibucau.website.rendering.cache.mode` to `file` and `rmannibucau.website.rendering.cache.directory`
+to the folder where to cache the pages. Note that in this mode the query parameters are ignored.
+
 Even if JCache already provides a way to integrate with a backend to persist into a database (or NoSQL storage)
 the pages through its `CacheLoader` and `CacheWriter`, you can implement a completely custom storage through the
 `HtmlCache` API. You just need to ensure to activate your implementation through an `@Alternative` or an equivalent technic.
@@ -110,3 +120,12 @@ public class SelfUrlMapper implements RequestUrlMapper {
 However if you just want to rewrite the base of the request you can just set the configuration `rmannibucau.website.rendering.url.mapper.base`
 to the base you want to prepend to the webapp request path. Typically, previous implementation would be replaced by
 `rmannibucau.website.rendering.url.mapper.base=https://mypublic.domain.com`.
+
+
+== Usages
+
+There are mainly two usages of this library:
+
+1. With the filter as explained before.
+2. Manually synchronized: in the "write" area of your application you ensure you can pre-render the pages (either using a custom header or local call)
+and you pre-cache the rendering before letting it be published and available. This will rely on `WebRenderer` API instead of the filter.

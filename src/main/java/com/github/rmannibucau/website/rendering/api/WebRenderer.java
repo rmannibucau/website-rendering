@@ -1,17 +1,19 @@
 package com.github.rmannibucau.website.rendering.api;
 
+import java.util.function.Consumer;
+
 /**
  * Provide a way to render an url.
  */
 public interface WebRenderer {
     /**
-     * Returns a selenium API.
+     * Provides a selenium API.
      *
      * @param expectedApi the selenium API to retrieve.
-     * @param <T> the expected type.
-     * @return the instance if possible or it will throw an exception.
+     * @param consumer the task to execute with the extracted API.
+     * @param <T> the expected API type.
      */
-    <T> T getDriverAs(Class<T> expectedApi);
+    <T> void withDriver(Class<T> expectedApi, Consumer<T> consumer);
 
     /**
      * Capture a public page.

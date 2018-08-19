@@ -1,5 +1,6 @@
 package com.github.rmannibucau.website.rendering.internal;
 
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.stream.Stream;
@@ -44,7 +45,6 @@ public class PhantomJsWebRendererTest {
     @Test
     public void seleniumAPIs() {
         Stream.of(WebDriver.class, TakesScreenshot.class, JavascriptExecutor.class)
-                .map(renderer::getDriverAs)
-                .forEach(Assert::assertNotNull);
+                .forEach(it -> renderer.withDriver(it, Assert::assertNotNull));
     }
 }
